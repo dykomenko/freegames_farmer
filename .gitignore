@@ -1,0 +1,6 @@
+claimed.json
+venv/
+__pycache__/
+*.pyc
+.env
+farmer.log

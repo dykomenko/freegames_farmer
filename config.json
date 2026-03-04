@@ -1,0 +1,7 @@
+{
+  "asf_url": "http://localhost:1242",
+  "asf_password": "",
+  "bot_name": "ASF",
+  "subreddits": ["FreeGamesOnSteam"],
+  "check_limit": 50
+}
