@@ -2,22 +2,27 @@
 
 Automatically claims free Steam games via [ArchiSteamFarm](https://github.com/JustArchiNET/ArchiSteamFarm) IPC API.
 
-Parses [r/FreeGamesOnSteam](https://reddit.com/r/FreeGamesOnSteam) for new free games and sends `addlicense` commands to all ASF bots.
-
 ## How it works
 
 ```
-Reddit (r/FreeGamesOnSteam)
-       │  fetch new posts via JSON API
-       ▼
-  Parse appID / subID from Steam URLs
-       │
-       ▼
-  ASF IPC API → addlicense ASF app/XXX
-       │
-       ▼
-  Save claimed IDs to claimed.json (dedup)
+u/ASFinfo (primary)          r/FreeGamesOnSteam (fallback)
+  │  curated !addlicense       │  Steam store URLs
+  │  commands with correct     │
+  │  subIDs (s/) and appIDs    │
+  ▼  (a/)                      ▼
+  ┌────────────────────────────────┐
+  │  Parse & deduplicate IDs       │
+  └───────────────┬────────────────┘
+                  ▼
+  ASF IPC API → addlicense ASF s/XXXXX
+                  │
+                  ▼
+         claimed.json (dedup)
 ```
+
+**Primary source** — [u/ASFinfo](https://reddit.com/user/ASFinfo): a Reddit bot that posts ready-made `!addlicense` commands with correct `s/subID` for free promotional packages.
+
+**Fallback** — [r/FreeGamesOnSteam](https://reddit.com/r/FreeGamesOnSteam): extracts `a/appID` from Steam store URLs.
 
 ## Requirements
 
@@ -52,8 +57,8 @@ bash install.sh
 | `asf_url` | ASF IPC endpoint |
 | `asf_password` | IPC password from ASF.json (`IPCPassword`) |
 | `bot_name` | `ASF` = all bots, or a specific bot name |
-| `subreddits` | List of subreddits to parse |
-| `check_limit` | Number of recent posts to fetch per subreddit |
+| `subreddits` | Fallback subreddits to parse for Steam URLs |
+| `check_limit` | Number of recent posts to fetch per source |
 
 3. **Test run:**
 
@@ -81,6 +86,6 @@ systemctl --user start freegames-farmer.service
 ```bash
 python3 -m venv venv
 venv/bin/pip install -r requirements.txt
-cp config.json ~/freegames_farmer/config.json  # edit with your password
+# edit config.json with your ASF IPC password
 python3 farmer.py
 ```
