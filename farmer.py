@@ -49,8 +49,14 @@ def load_config() -> dict:
 def load_claimed() -> set[str]:
     if not CLAIMED_PATH.exists():
         return set()
-    with open(CLAIMED_PATH, encoding="utf-8") as f:
-        return set(json.load(f))
+    try:
+        text = CLAIMED_PATH.read_text(encoding="utf-8").strip()
+        if not text:
+            return set()
+        return set(json.loads(text))
+    except (json.JSONDecodeError, ValueError) as e:
+        log.warning("claimed.json is corrupted (%s), starting fresh", e)
+        return set()
 
 
 def save_claimed(claimed: set[str]) -> None:
@@ -98,7 +104,11 @@ async def fetch_reddit_user(session: aiohttp.ClientSession, username: str, limit
             if resp.status != 200:
                 log.warning("Reddit u/%s returned %d", username, resp.status)
                 return []
-            data = await resp.json()
+            text = await resp.text()
+            if not text.strip():
+                log.warning("Reddit u/%s returned empty body", username)
+                return []
+            data = json.loads(text)
             return [child["data"] for child in data.get("data", {}).get("children", [])]
     except Exception as e:
         log.error("Failed to fetch u/%s: %s", username, e)
@@ -113,7 +123,11 @@ async def fetch_reddit_sub(session: aiohttp.ClientSession, subreddit: str, limit
             if resp.status != 200:
                 log.warning("Reddit r/%s returned %d", subreddit, resp.status)
                 return []
-            data = await resp.json()
+            text = await resp.text()
+            if not text.strip():
+                log.warning("Reddit r/%s returned empty body", subreddit)
+                return []
+            data = json.loads(text)
             return [child["data"] for child in data.get("data", {}).get("children", [])]
     except Exception as e:
         log.error("Failed to fetch r/%s: %s", subreddit, e)
@@ -139,7 +153,10 @@ async def asf_add_license(
 
     try:
         async with session.post(url, headers=headers, json=payload, timeout=aiohttp.ClientTimeout(total=30)) as resp:
-            result = await resp.json()
+            text = await resp.text()
+            if not text.strip():
+                return {"success": False, "message": "Empty ASF response", "result": "", "command": command}
+            result = json.loads(text)
             return {
                 "success": result.get("Success", False),
                 "message": result.get("Message", ""),
@@ -210,13 +227,24 @@ async def main():
             key = f"{prefix}/{steam_id}"
             result = await asf_add_license(session, asf_url, asf_password, bot_name, prefix, steam_id)
 
-            status = result["result"].split("\n")[0][:120] if result["result"] else result["message"]
+            raw = result["result"]
+            if isinstance(raw, dict):
+                status = str(raw.get("Result", raw))[:120]
+            elif isinstance(raw, str) and raw:
+                status = raw.split("\n")[0][:120]
+            else:
+                status = result["message"]
+            # Don't save rate-limited or connection-failed entries — retry next run
+            retry = "RateLimitExceeded" in status or (not result["success"] and "401" not in status)
             if result["success"]:
                 log.info("OK: %s — %s | %s", key, title, status)
             else:
                 log.warning("FAIL: %s — %s | %s", key, title, status)
 
-            claimed.add(key)
+            if not retry:
+                claimed.add(key)
+            else:
+                log.info("RETRY NEXT RUN: %s", key)
             new_claims.append(key)
 
     save_claimed(claimed)
